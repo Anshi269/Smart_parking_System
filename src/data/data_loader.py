@@ -16,7 +16,7 @@ class ParkingDataLoader:
         """Load parking data from CSV"""
         if os.path.exists(self.csv_path):
             self.df = pd.read_csv(self.csv_path)
-            print(f"✓ Loaded {len(self.df)} records from parking dataset")
+            print(f"[OK] Loaded {len(self.df)} records from parking dataset")
         else:
             raise FileNotFoundError(f"CSV file not found at {self.csv_path}")
     

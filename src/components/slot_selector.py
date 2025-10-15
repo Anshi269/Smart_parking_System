@@ -2,9 +2,11 @@
 Slot Selector Component
 Displays parking slots in a 2D grid (bus booking style)
 Shows time-based availability from booking system
+Integrated with ML predictor for intelligent suggestions
 """
 import streamlit as st
 import math
+from datetime import datetime, timedelta
 
 def render_slot_selector(spots, section_name, data_loader, booking_system=None, selected_hour=None):
     """
@@ -299,6 +301,21 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
                     if least_occupied_section != section_name and least_occ_pct < current_occ_pct - 15:
                         st.caption(f"💡 Reminder: {least_occupied_section} has {least_occ_pct:.0f}% occupancy (less crowded). See recommendation above.")
             
+            # ML-Powered Insights (NEW!)
+            st.markdown("---")
+            st.markdown("### 🤖 AI-Powered Insights")
+            
+            # Get ML prediction
+            ml_prediction = _get_ml_insights(
+                st.session_state.selected_slot,
+                section_name,
+                selected_hour,
+                data_loader
+            )
+            
+            if ml_prediction and ml_prediction.get('available'):
+                _display_ml_insights(ml_prediction, section_name, selected_hour, booking_system, data_loader)
+            
             # Additional spot details
             with st.expander("📋 Detailed Spot Information"):
                 st.write(f"**Proximity to Exit:** {selected_spot_info.get('Proximity_To_Exit', 'N/A'):.2f} meters")
@@ -309,4 +326,223 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
             if st.button("📅 Proceed to Booking", type="primary", use_container_width=True):
                 st.success(f"✅ Slot {st.session_state.selected_slot} selected! (Booking flow coming soon)")
                 # This is where booking logic will be added later
+
+
+def _get_ml_insights(spot_id, section, hour, data_loader):
+    """Get ML insights for selected spot"""
+    try:
+        # Import predictor
+        from ml.predictor_prebooking import PrebookingPredictor
+        
+        # Initialize predictor (cached in session state)
+        if 'ml_predictor' not in st.session_state:
+            st.session_state.ml_predictor = PrebookingPredictor(
+                model_dir='models',
+                data_loader=data_loader
+            )
+        
+        predictor = st.session_state.ml_predictor
+        
+        # Get user inputs
+        user_inputs = st.session_state.get('user_inputs', {})
+        day_of_week = user_inputs.get('day_of_week', datetime.now().strftime('%A'))
+        vehicle_type = user_inputs.get('vehicle_type', 'Sedan')
+        is_ev = user_inputs.get('electric_vehicle', 0) == 1
+        
+        # Calculate booking datetime (current day at selected hour)
+        now = datetime.now()
+        booking_datetime = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        
+        # If selected hour is in the past today, assume next day
+        if booking_datetime < now:
+            booking_datetime += timedelta(days=1)
+        
+        # Get prediction
+        prediction = predictor.predict_for_prebooking(
+            spot_id=spot_id,
+            section=section,
+            booking_datetime=booking_datetime,
+            vehicle_type=vehicle_type,
+            is_ev=is_ev
+        )
+        
+        prediction['available'] = True
+        return prediction
+    
+    except Exception as e:
+        print(f"[ERROR] ML insights failed: {e}")
+        return {'available': False, 'error': str(e)}
+
+
+def _display_ml_insights(prediction, section, hour, booking_system, data_loader):
+    """Display ML insights in a beautiful format"""
+    
+    insights = prediction.get('insights', {})
+    
+    # Main prediction card
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        confidence = prediction.get('probability_vacant', 0.5) * 100
+        st.metric(
+            "AI Confidence", 
+            f"{confidence:.0f}%",
+            "Likely Available" if confidence > 55 else "Uncertain",
+            delta_color="normal" if confidence > 55 else "inverse"
+        )
+    
+    with col2:
+        traffic = prediction.get('predicted_traffic', 'Medium')
+        traffic_emoji = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}.get(traffic, "🟡")
+        st.metric(
+            "Traffic Prediction",
+            f"{traffic_emoji} {traffic}",
+            insights.get('traffic', {}).get('tip', '')
+        )
+    
+    with col3:
+        weather = insights.get('weather', {})
+        temp = weather.get('temperature', 20)
+        st.metric(
+            "Weather Forecast",
+            f"{temp:.0f}°C",
+            weather.get('tip', 'Good conditions')
+        )
+    
+    # Detailed insights in expandable sections
+    with st.expander("🌤️ Weather & Environmental Conditions", expanded=True):
+        weather_info = insights.get('weather', {})
+        st.write(f"**Status:** {weather_info.get('status', 'N/A')}")
+        st.write(f"**Temperature:** {weather_info.get('temperature', 20):.1f}°C")
+        st.write(f"**Precipitation:** {'Rain expected' if weather_info.get('precipitation', 0) > 0 else 'No rain'}")
+        st.info(f"💡 **Tip:** {weather_info.get('tip', 'Good parking conditions expected')}")
+        
+        # Weather source indicator
+        source = weather_info.get('source', 'historical_average')
+        if source == 'historical_average':
+            st.caption("ℹ️ Using historical weather average (Live API coming soon)")
+    
+    with st.expander("🚗 Traffic & Timing Insights"):
+        traffic_info = insights.get('traffic', {})
+        time_info = insights.get('time_pattern', {})
+        
+        col_a, col_b = st.columns(2)
+        
+        with col_a:
+            st.write("**Traffic Prediction:**")
+            st.write(f"- Level: {traffic_info.get('level', 'Medium')}")
+            st.write(f"- {traffic_info.get('tip', 'N/A')}")
+            st.caption(f"Source: {traffic_info.get('source', 'Pattern-based')}")
+        
+        with col_b:
+            st.write("**Time Pattern:**")
+            st.write(f"- Pattern: {time_info.get('pattern', 'N/A')}")
+            st.write(f"- {time_info.get('tip', 'N/A')}")
+            hours_until = prediction.get('hours_until_booking', 0)
+            if hours_until > 0:
+                st.caption(f"⏰ Booking {hours_until:.1f} hours ahead")
+    
+    with st.expander("🚙 Vehicle Compatibility"):
+        vehicle_info = insights.get('vehicle_compatibility', {})
+        compatible = vehicle_info.get('compatible', True)
+        
+        if compatible:
+            st.success(f"✅ {vehicle_info.get('tip', 'Good match for your vehicle')}")
+        else:
+            st.warning(f"⚠️ {vehicle_info.get('tip', 'Spot size may not match')}")
+            st.write(f"**Your vehicle needs:** {vehicle_info.get('recommended_size', 'Standard')} spot")
+            st.write(f"**This spot is:** {vehicle_info.get('spot_size', 'Standard')}")
+    
+    # Overall recommendation
+    recommendation = prediction.get('recommendation', '')
+    
+    if prediction.get('probability_vacant', 0.5) > 0.7:
+        st.success(f"✅ **Recommendation:** {recommendation}")
+    elif prediction.get('probability_vacant', 0.5) > 0.55:
+        st.info(f"💡 **Recommendation:** {recommendation}")
+    elif prediction.get('probability_vacant', 0.5) > 0.45:
+        st.warning(f"⚠️ **Recommendation:** {recommendation}")
+    else:
+        st.error(f"❌ **Recommendation:** {recommendation}")
+    
+    # Smart alternatives suggestion
+    if prediction.get('probability_vacant', 0.5) < 0.6:
+        with st.expander("🎯 Smart Alternative Suggestions"):
+            st.write("Looking for better options with higher availability confidence...")
+            
+            # Get user inputs
+            user_inputs = st.session_state.get('user_inputs', {})
+            day_of_week = user_inputs.get('day_of_week', datetime.now().strftime('%A'))
+            vehicle_type = user_inputs.get('vehicle_type', 'Sedan')
+            is_ev = user_inputs.get('electric_vehicle', 0) == 1
+            
+            # Calculate booking time
+            now = datetime.now()
+            booking_datetime = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if booking_datetime < now:
+                booking_datetime += timedelta(days=1)
+            
+            # Get alternatives
+            try:
+                predictor = st.session_state.ml_predictor
+                
+                # Get available spots from booking system
+                available_spots = booking_system.get_available_spots_in_section(section, hour)
+                
+                # Get ML predictions for alternatives
+                alternatives = []
+                for spot_id in available_spots[:10]:  # Check top 10 available spots
+                    if spot_id == st.session_state.selected_slot:
+                        continue  # Skip currently selected spot
+                    
+                    alt_pred = predictor.predict_for_prebooking(
+                        spot_id=spot_id,
+                        section=section,
+                        booking_datetime=booking_datetime,
+                        vehicle_type=vehicle_type,
+                        is_ev=is_ev
+                    )
+                    
+                    spot_info = data_loader.get_spot_info(spot_id, section)
+                    
+                    alternatives.append({
+                        'spot_id': spot_id,
+                        'confidence': alt_pred.get('probability_vacant', 0.5),
+                        'distance': spot_info.get('Proximity_To_Exit', 10.0) if spot_info else 10.0,
+                        'size': spot_info.get('Spot_Size', 'Standard') if spot_info else 'Standard',
+                        'compatible': alt_pred.get('size_compatible', True)
+                    })
+                
+                # Sort by confidence (descending)
+                alternatives.sort(key=lambda x: x['confidence'], reverse=True)
+                
+                # Display top 3 alternatives
+                if alternatives:
+                    st.write("**Top 3 Alternative Spots:**")
+                    
+                    for i, alt in enumerate(alternatives[:3], 1):
+                        col_1, col_2, col_3, col_4 = st.columns([1, 2, 2, 1])
+                        
+                        with col_1:
+                            st.write(f"**#{i}**")
+                        
+                        with col_2:
+                            st.write(f"**Spot {alt['spot_id']}**")
+                            st.caption(f"{alt['size']} {'✓' if alt['compatible'] else '⚠️'}")
+                        
+                        with col_3:
+                            st.write(f"{alt['confidence']*100:.0f}% confidence")
+                            st.caption(f"{alt['distance']:.1f}m from exit")
+                        
+                        with col_4:
+                            if st.button("Select", key=f"alt_{alt['spot_id']}"):
+                                st.session_state.selected_slot = alt['spot_id']
+                                if 'user_inputs' in st.session_state:
+                                    st.session_state.user_inputs['parking_spot_id'] = alt['spot_id']
+                                st.rerun()
+                else:
+                    st.write("No better alternatives found at this time.")
+            
+            except Exception as e:
+                st.write(f"Unable to load alternatives: {str(e)}")
 

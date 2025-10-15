@@ -1,0 +1,49 @@
+Hour
+
+DayOfWeek
+
+Vehicle_Type
+
+Parking_Spot_ID
+
+Electric_Vehicle
+  all above by user 
+
+
+
+ below from dATAset(csv file )
+
+
+6. IsWeekend
+7. Month
+8. Hour_sin
+9. Hour_cos
+10. DayOfWeek_sin
+11. DayOfWeek_cos
+12. Hour_Pattern
+13. DayOfWeek_Pattern
+
+14. Parking_Lot_Section
+15. Proximity_To_Exit
+
+16. Occupancy_Prev1
+17. Occupancy_Prev2
+18. Occupancy_Prev5
+19. Occupancy_RollingMean_10
+20. Occupancy_RollingMean_50
+21. Section_Occupancy_Trend
+22. Time_Since_Change
+
+23. User_Parking_History
+24. Reserved_Status
+
+25. Sensor_Reading_Proximity
+26. Sensor_Reading_Pressure
+27. Sensor_Reading_Ultrasonic
+
+28. Weather_Temperature
+29. Weather_Precipitation
+30. Nearby_Traffic_Level
+
+31. Vehicle_Type_Weight
+32. Vehicle_Type_Height
