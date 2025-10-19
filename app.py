@@ -123,11 +123,17 @@ def main():
         elif nav_state['show_sections'] and nav_state['area']:
             # Show section selector with occupancy data
             sections = data_loader.get_all_sections()
+            # Pass entry/exit times for richer occupancy display when available
+            entry_time = user_inputs.get('entry_time') if user_inputs else None
+            exit_time = user_inputs.get('exit_time') if user_inputs else None
+
             render_section_selector(
-                sections, 
-                nav_state['area'], 
-                booking_system, 
-                selected_hour
+                sections,
+                nav_state['area'],
+                booking_system,
+                selected_hour,
+                entry_time=entry_time,
+                exit_time=exit_time
             )
         
         else:

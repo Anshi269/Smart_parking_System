@@ -53,6 +53,7 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
         cursor: pointer;
         transition: all 0.2s;
         font-size: 14px;
+        position: relative;
     }
     .slot-available {
         background: #48bb78;
@@ -81,6 +82,19 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
         transform: scale(1.1);
         box-shadow: 0 0 15px rgba(66, 153, 225, 0.6);
     }
+    .ev-icon {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        font-size: 12px;
+        background: rgba(255,255,255,0.15);
+        padding: 2px 6px;
+        border-radius: 6px;
+        color: #fff;
+        display: inline-block;
+    }
+    .slot-available .ev-icon { background: rgba(255,255,255,0.15); color: #065f46; }
+    .slot-selected .ev-icon { background: rgba(255,255,255,0.18); color: #055a8c; }
     .legend {
         display: flex;
         gap: 20px;
@@ -97,6 +111,28 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
         height: 30px;
         border-radius: 5px;
     }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Floating panel CSS
+    st.markdown("""
+    <style>
+    .floating-panel {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        width: 320px;
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 16px 18px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        z-index: 9999;
+        border-left: 6px solid #4299e1;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    .floating-panel h4 { margin: 0 0 8px 0; }
+    .floating-panel .meta { font-size: 13px; color: #4a5568; margin-bottom: 6px; }
+    .floating-panel .close-note { font-size: 12px; color: #718096; margin-top: 8px; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -245,9 +281,32 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
                             slot_class = "slot-available"
                         
                         # Display slot
+                        # Prepare tooltip for available/selected slots
+                        tooltip_text = ""
+                        try:
+                            if slot_class in ("slot-available", "slot-selected") and spot_info:
+                                ev = 'Yes' if spot_info.get('Electric_Vehicle', 0) == 1 else 'No'
+                                size = spot_info.get('Spot_Size', 'Standard')
+                                # Use a concise one-line tooltip (browser title) for hover and focus
+                                tooltip_text = f"✅ Selected Slot Information | Slot ID: {spot_id} | Section: {section_name} | Spot Size: {size} | EV Charging: {ev}"
+                        except Exception:
+                            tooltip_text = ""
+
+                        title_attr = f' title="{tooltip_text}"' if tooltip_text else ""
+
+                        # EV icon markup when available
+                        ev_html = ""
+                        try:
+                            if spot_info and spot_info.get('Electric_Vehicle', 0) == 1:
+                                # small lightning bolt emoji as EV indicator
+                                ev_html = f"<span class='ev-icon'>⚡ EV</span>"
+                        except Exception:
+                            ev_html = ""
+
                         st.markdown(f"""
-                        <div class="slot {slot_class}">
+                        <div class="slot {slot_class}"{title_attr}>
                             {spot_id}
+                            {ev_html}
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -326,6 +385,37 @@ def render_slot_selector(spots, section_name, data_loader, booking_system=None, 
             if st.button("📅 Proceed to Booking", type="primary", use_container_width=True):
                 st.success(f"✅ Slot {st.session_state.selected_slot} selected! (Booking flow coming soon)")
                 # This is where booking logic will be added later
+
+        # Floating info panel (also shows when a slot is selected)
+        try:
+            ev = 'Yes' if selected_spot_info.get('Electric_Vehicle', 0) == 1 else 'No'
+            size = selected_spot_info.get('Spot_Size', 'Standard')
+            proximity = selected_spot_info.get('Proximity_To_Exit', 0.0)
+
+            panel_html = f"""
+            <div class='floating-panel' id='floating_slot_info'>
+                <h4>✅ Selected Slot Information</h4>
+                <div class='meta'><strong>Slot ID:</strong> {st.session_state.selected_slot}</div>
+                <div class='meta'><strong>Section:</strong> {section_name}</div>
+                <div class='meta'><strong>Spot Size:</strong> {size}</div>
+                <div class='meta'><strong>EV Charging:</strong> {ev}</div>
+                <div class='meta'><strong>Proximity to Exit:</strong> {proximity:.1f} m</div>
+                <div class='close-note'>Click the button below to close this panel.</div>
+            </div>
+            """
+
+            st.markdown(panel_html, unsafe_allow_html=True)
+
+            if st.button("Close Info", key="close_floating_info"):
+                st.session_state.selected_slot = None
+                # Also clear parking_spot_id in user inputs when closing
+                if 'user_inputs' in st.session_state and 'parking_spot_id' in st.session_state.user_inputs:
+                    st.session_state.user_inputs['parking_spot_id'] = None
+                st.experimental_rerun()
+
+        except Exception:
+            # If any data missing, silently skip floating panel
+            pass
 
 
 def _get_ml_insights(spot_id, section, hour, data_loader):

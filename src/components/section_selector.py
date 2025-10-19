@@ -5,7 +5,7 @@ Shows real-time occupancy percentage for each zone based on selected time
 """
 import streamlit as st
 
-def render_section_selector(sections, area_name, booking_system=None, selected_hour=None):
+def render_section_selector(sections, area_name, booking_system=None, selected_hour=None, entry_time=None, exit_time=None):
     """
     Render section selector as a popup-style interface with occupancy data
     
@@ -63,14 +63,36 @@ def render_section_selector(sections, area_name, booking_system=None, selected_h
     
     st.markdown("---")
     
-    # Get occupancy data for all sections at selected hour
+    # Get occupancy data for the provided time context
     occupancy_data = {}
-    if booking_system and selected_hour is not None:
-        occupancy_data = booking_system.get_all_sections_occupancy(selected_hour)
-        
-        # Show time context
-        hour_display = f"{selected_hour}:00" if selected_hour < 12 or selected_hour == 0 else f"{selected_hour-12 if selected_hour > 12 else selected_hour}:00 {'AM' if selected_hour < 12 else 'PM'}"
-        st.info(f"📊 Showing occupancy for **{hour_display}**")
+    if booking_system:
+        # Prefer entry/exit time window if provided
+        if entry_time is not None and exit_time is not None:
+            # booking_system should provide a method to get occupancy for a time range; fallback to hourly for now
+            try:
+                occupancy_data = booking_system.get_all_sections_occupancy_range(entry_time, exit_time)
+            except Exception:
+                # Fallback: use entry_time.hour for single-hour occupancy
+                occupancy_data = booking_system.get_all_sections_occupancy(entry_time.hour)
+
+            # Format display for entry-exit
+            def fmt_time(t):
+                h = t.hour
+                if h == 0:
+                    return f"12:{t.minute:02d} AM"
+                elif h < 12:
+                    return f"{h}:{t.minute:02d} AM"
+                elif h == 12:
+                    return f"12:{t.minute:02d} PM"
+                else:
+                    return f"{h-12}:{t.minute:02d} PM"
+
+            st.info(f"📊 Showing occupancy for **{fmt_time(entry_time)} → {fmt_time(exit_time)}**")
+        elif selected_hour is not None:
+            occupancy_data = booking_system.get_all_sections_occupancy(selected_hour)
+            # Show time context for single hour
+            hour_display = f"{selected_hour}:00" if selected_hour < 12 or selected_hour == 0 else f"{selected_hour-12 if selected_hour > 12 else selected_hour}:00 {'AM' if selected_hour < 12 else 'PM'}"
+            st.info(f"📊 Showing occupancy for **{hour_display}**")
     
     # Display sections in a grid layout
     cols = st.columns(min(len(sections), 4))

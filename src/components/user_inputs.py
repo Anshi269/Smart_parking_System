@@ -19,28 +19,68 @@ def render_user_inputs():
     current_hour = now.hour
     current_day = now.strftime('%A')
     
-    # 1. Hour selection (0-23 with AM/PM display)
-    st.markdown("#### ⏰ Arrival Time")
-    hour = st.slider(
-        "Select Hour",
-        min_value=0,
-        max_value=23,
-        value=current_hour,
-        format="%d:00",
-        help="What time do you plan to arrive?"
+    # 1. Entry and Exit Time selection (simple time inputs)
+    st.markdown("#### ⏰ Entry & Exit Time")
+
+    # defaults: entry = current time rounded to hour, exit = entry + 1 hour
+    from datetime import time, timedelta
+    default_entry = now.replace(minute=0, second=0, microsecond=0).time()
+    default_exit_dt = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    default_exit = default_exit_dt.time()
+
+    # Show Entry first, Exit below
+    entry_time = st.time_input(
+        "Entry Time",
+        value=default_entry,
+        help="What time do you plan to enter?"
     )
-    
-    # Display in 12-hour format for user clarity
-    if hour == 0:
-        hour_display = "12:00 AM"
-    elif hour < 12:
-        hour_display = f"{hour}:00 AM"
-    elif hour == 12:
-        hour_display = "12:00 PM"
+
+    st.markdown("---")
+
+    exit_time = st.time_input(
+        "Exit Time",
+        value=default_exit,
+        help="What time do you plan to exit?"
+    )
+
+    def fmt_time(t):
+        # t is a datetime.time
+        hour = t.hour
+        if hour == 0:
+            return f"12:{t.minute:02d} AM"
+        elif hour < 12:
+            return f"{hour}:{t.minute:02d} AM"
+        elif hour == 12:
+            return f"12:{t.minute:02d} PM"
+        else:
+            return f"{hour-12}:{t.minute:02d} PM"
+
+    entry_time_display = fmt_time(entry_time)
+    exit_time_display = fmt_time(exit_time)
+
+    # Show entry and exit on separate lines
+    st.caption(f"Selected Entry: **{entry_time_display}**")
+    st.caption(f"Selected Exit: **{exit_time_display}**")
+
+    # Compute duration (in minutes) between entry and exit, handle cross-midnight
+    from datetime import datetime as _dt
+
+    entry_dt = _dt.combine(_dt.today(), entry_time)
+    exit_dt = _dt.combine(_dt.today(), exit_time)
+    if exit_dt <= entry_dt:
+        # Exit is next day
+        exit_dt = exit_dt + timedelta(days=1)
+
+    duration_td = exit_dt - entry_dt
+    duration_minutes = int(duration_td.total_seconds() // 60)
+    hours = duration_minutes // 60
+    minutes = duration_minutes % 60
+    if hours > 0:
+        duration_str = f"{hours}h {minutes}m"
     else:
-        hour_display = f"{hour-12}:00 PM"
-    
-    st.caption(f"Selected: **{hour_display}**")
+        duration_str = f"{minutes}m"
+
+    st.markdown(f"**Duration:** {duration_str}")
     
     # 2. Day of Week selection
     st.markdown("#### 📅 Arrival Day")
@@ -82,9 +122,18 @@ def render_user_inputs():
     if 'user_inputs' not in st.session_state:
         st.session_state.user_inputs = {}
     
+    # Keep 'hour' for backwards compatibility (maps to entry hour)
     st.session_state.user_inputs = {
-        'hour': hour,
-        'hour_display': hour_display,
+        'hour': entry_time.hour,
+        'hour_display': entry_time_display,
+        'entry_time': entry_time,
+        'entry_time_display': entry_time_display,
+        'exit_time': exit_time,
+        'exit_time_display': exit_time_display,
+        'entry_hour': entry_time.hour,
+        'exit_hour': exit_time.hour,
+        'duration_minutes': duration_minutes,
+        'duration_str': duration_str,
         'day_of_week': day_of_week,
         'vehicle_type': vehicle_type,
         'electric_vehicle': ev_value,
@@ -98,10 +147,11 @@ def render_user_inputs():
     summary_col1, summary_col2 = st.columns(2)
     
     with summary_col1:
-        st.metric("Time", hour_display)
+        st.metric("Entry", entry_time_display)
         st.metric("Vehicle", vehicle_type)
     
     with summary_col2:
+        st.metric("Exit", exit_time_display)
         st.metric("Day", day_of_week[:3])  # Show abbreviated day
         st.metric("EV Charging", "Yes" if ev_value else "No")
     
